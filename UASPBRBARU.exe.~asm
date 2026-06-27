@@ -1,0 +1,509 @@
+.MODEL SMALL
+.STACK 100H
+
+.DATA
+;==========================================================================
+; DISPLAY MESSAGES & STRINGS
+;==========================================================================
+judul       DB 13,10,'============================================'
+DB 13,10,'         SISTEM KASIR RESTORAN RESITA       '
+DB 13,10,'============================================',13,10,'$'
+
+menu_msg    DB 13,10,'-------------- DAFTAR MENU -----------------'
+DB 13,10,' 1. Nasi Goreng  = Rp15000'
+DB 13,10,' 2. Mie Ayam     = Rp12000'
+DB 13,10,' 3. Bakso        = Rp10000'
+DB 13,10,' 4. Es Teh       = Rp5000'
+DB 13,10,' 5. Es Jeruk     = Rp6000'
+DB 13,10,'--------------------------------------------',13,10,'$'
+
+pilih_msg   DB 13,10,' Pilih Nomor Menu (1-4) : $'
+jumlah_msg  DB 13,10,' Masukkan Jumlah Pesanan : $'
+err_pilih   DB 13,10,' [!] Pilihan salah! Silakan coba lagi.',13,10,'$'
+
+konfirm_msg DB 13,10,' Tambah pesanan lagi? (Y/T) : $'
+subtotalmsg DB 13,10,' Subtotal Item ini      : Rp $'
+
+;==========================================================================
+; STRUK BELANJA & PEMBAYARAN MESSAGES
+;==========================================================================
+garis_struk   DB 13,10,'============================================','$'
+header_st     DB 13,10,'             STRUK BUKTI PEMBAYARAN        ',13,10,'$'
+item_nasi     DB 13,10,' Nasi Goreng   x $'
+item_mie      DB 13,10,' Mie Ayam      x $'
+item_bakso    DB 13,10,' Bakso         x $'
+item_esteh    DB 13,10,' Es Teh        x $'
+item_esjeruk  DB 13,10,' Es Jeruk      x $'
+
+strip_struk DB 13,10,' ------------------------------------------ ','$'
+total_msg   DB 13,10,' TOTAL BELANJA          : Rp $'
+bayar_msg   DB 13,10,' TUNAI / BAYAR          : Rp $'
+kembali_msg DB 13,10,' KEMBALIAN              : Rp $'
+err_bayar   DB 13,10,' [!] Uang Anda tidak cukup!',13,10,'$'
+thanks_msg  DB 13,10,13,10,'       Terima Kasih Atas Kunjungan Anda     '
+DB 13,10,'============================================',13,10,'$'
+
+ulang_app   DB 13,10,' Buat Transaksi Baru? (Y/T) : $'
+titik_dua   DB '  = Rp $'
+
+;==========================================================================
+; VARIABLES & BUFFERS
+;==========================================================================
+input_pilih DB ?
+temp_qty    DW ?
+temp_sub    DW ?
+
+; Menyimpan kuantitas belanja per item (akumulatif dalam satu transaksi)
+qty_nasi    DW 0
+qty_mie     DW 0
+qty_bakso   DW 0
+qty_esteh   DW 0
+qty_esjeruk DW 0
+
+; Variabel Keuangan
+TOTAL_ALL   DW 0
+UANG_BAYAR  DW 0
+UANG_KEMBALI DW 0
+
+; Buffer untuk membaca input angka multi-digit
+buffer_input DB 6, ?, 6 DUP(?)
+
+.CODE
+;==========================================================================
+; MAIN PROCEDURE
+;==========================================================================
+MAIN PROC
+MOV AX, @DATA
+MOV DS, AX
+
+TRANSAKSI_BARU:
+; Reset semua data akumulator untuk transaksi baru
+MOV qty_nasi, 0
+MOV qty_mie, 0
+MOV qty_bakso, 0
+MOV qty_esteh, 0
+MOV qty_esjeruk, 0
+MOV TOTAL_ALL, 0
+MOV UANG_BAYAR, 0
+MOV UANG_KEMBALI, 0
+
+APP_LOOP:
+CALL CLS
+
+; Tampilkan Judul & Menu
+LEA DX, judul
+MOV AH, 09H
+INT 21H
+
+LEA DX, menu_msg
+MOV AH, 09H
+INT 21H
+
+INPUT_MENU:
+LEA DX, pilih_msg
+MOV AH, 09H
+INT 21H
+
+MOV AH, 01H
+INT 21H
+MOV input_pilih, AL
+
+; Validasi Pilihan Menu (Harus '1'-'4')
+CMP AL, '1'
+JB INVALID_CHOICE
+CMP AL, '4'
+JA INVALID_CHOICE
+JMP PROSES_QTY
+
+INVALID_CHOICE:
+LEA DX, err_pilih
+MOV AH, 09H
+INT 21H
+JMP INPUT_MENU
+
+PROSES_QTY:
+LEA DX, jumlah_msg
+MOV AH, 09H
+INT 21H
+
+CALL READNUM          ; Membaca input multi digit ke AX
+CMP AX, 0
+JE PROSES_QTY         ; Jika input 0 atau kosong, minta input lagi
+MOV temp_qty, AX
+
+; Hitung berdasarkan menu yang dipilih
+CMP input_pilih, '1'
+JE JALAN_NASI
+CMP input_pilih, '2'
+JE JALAN_MIE
+CMP input_pilih, '3'
+JE JALAN_BAKSO
+CMP input_pilih, '4'
+JE JALAN_ESTEH
+CMP input_pilih, '5'
+JE JALAN_ESJERUK
+
+JALAN_NASI:
+MOV AX, temp_qty
+ADD qty_nasi, AX      ; Tambah kuantitas akumulasi
+MOV BX, 15000
+MUL BX                ; AX = Qty * 15000
+MOV temp_sub, AX
+ADD TOTAL_ALL, AX     ; Tambahkan ke total keseluruhan
+JMP TAMPIL_SUB
+
+JALAN_MIE:
+MOV AX, temp_qty
+ADD qty_mie, AX
+MOV BX, 12000
+MUL BX
+MOV temp_sub, AX
+ADD TOTAL_ALL, AX
+JMP TAMPIL_SUB
+
+JALAN_BAKSO:
+MOV AX, temp_qty
+ADD qty_bakso, AX
+MOV BX, 10000
+MUL BX
+MOV temp_sub, AX
+ADD TOTAL_ALL, AX
+JMP TAMPIL_SUB
+
+JALAN_ESTEH:
+MOV AX, temp_qty
+ADD qty_esteh, AX
+MOV BX, 5000
+MUL BX
+MOV temp_sub, AX
+ADD TOTAL_ALL, AX
+JMP TAMPIL_SUB
+
+JALAN_ESJERUK:
+MOV AX, temp_qty
+ADD qty_esjeruk, AX
+MOV BX, 6000
+MUL BX
+MOV temp_sub, AX
+ADD TOTAL_ALL, AX
+JMP TAMPIL_SUB
+
+TAMPIL_SUB:
+LEA DX, subtotalmsg
+MOV AH, 09H
+INT 21H
+MOV AX, temp_sub
+CALL PRINTNUM
+
+TANYA_LAGI:
+LEA DX, konfirm_msg
+MOV AH, 09H
+INT 21H
+
+MOV AH, 01H
+INT 21H
+CMP AL, 'Y'
+JE APP_LOOP
+CMP AL, 'y'
+JE APP_LOOP
+CMP AL, 'T'
+JE PROSES_BAYAR
+CMP AL, 't'
+JE PROSES_BAYAR
+JMP TANYA_LAGI
+
+;==========================================================================
+; PROSEDUR PEMBAYARAN & HITUNG KEMBALIAN
+;==========================================================================
+PROSES_BAYAR:
+CALL CLS
+LEA DX, judul
+MOV AH, 09H
+INT 21H
+
+LEA DX, total_msg
+MOV AH, 09H
+INT 21H
+MOV AX, TOTAL_ALL
+CALL PRINTNUM
+
+INPUT_UANG:
+LEA DX, bayar_msg
+MOV AH, 09H
+INT 21H
+
+CALL READNUM
+MOV UANG_BAYAR, AX
+
+; Bandingkan apakah Uang Bayar >= Total Belanja
+MOV BX, TOTAL_ALL
+CMP AX, BX
+JB KEKURANGAN_UANG
+
+; Hitung Kembalian
+SUB AX, BX
+MOV UANG_KEMBALI, AX
+JMP CETAK_STRUK_FINAL
+
+KEKURANGAN_UANG:
+LEA DX, err_bayar
+MOV AH, 09H
+INT 21H
+JMP INPUT_UANG
+
+;==========================================================================
+; PROSEDUR PENCETAKAN STRUK NOTA KASIR
+;==========================================================================
+CETAK_STRUK_FINAL:
+CALL CLS
+
+LEA DX, garis_struk
+MOV AH, 09H
+INT 21H
+
+LEA DX, header_st
+MOV AH, 09H
+INT 21H
+
+LEA DX, garis_struk
+MOV AH, 09H
+INT 21H
+
+; Cek dan Cetak item Nasi Goreng jika dibeli
+CMP qty_nasi, 0
+JE CEK_MIE
+LEA DX, item_nasi
+MOV AH, 09H
+INT 21H
+MOV AX, qty_nasi
+CALL PRINTNUM
+LEA DX, titik_dua
+MOV AH, 09H
+INT 21H
+MOV AX, qty_nasi
+MOV BX, 15000
+MUL BX
+CALL PRINTNUM
+
+CEK_MIE:
+; Cek dan Cetak item Mie Ayam jika dibeli
+CMP qty_mie, 0
+JE CEK_BAKSO
+LEA DX, item_mie
+MOV AH, 09H
+INT 21H
+MOV AX, qty_mie
+CALL PRINTNUM
+LEA DX, titik_dua
+MOV AH, 09H
+INT 21H
+MOV AX, qty_mie
+MOV BX, 12000
+MUL BX
+CALL PRINTNUM
+
+CEK_BAKSO:
+; Cek dan Cetak item Bakso jika dibeli
+CMP qty_bakso, 0
+JE CEK_ESTEH
+LEA DX, item_bakso
+MOV AH, 09H
+INT 21H
+MOV AX, qty_bakso
+CALL PRINTNUM
+LEA DX, titik_dua
+MOV AH, 09H
+INT 21H
+MOV AX, qty_bakso
+MOV BX, 10000
+MUL BX
+CALL PRINTNUM
+
+CEK_ESTEH:
+; Cek dan Cetak item Es Teh jika dibeli
+CMP qty_esteh, 0
+JE CEK_ESJERUK
+LEA DX, item_esteh
+MOV AH, 09H
+INT 21H
+MOV AX, qty_esteh
+CALL PRINTNUM
+LEA DX, titik_dua
+MOV AH, 09H
+INT 21H
+MOV AX, qty_esteh
+MOV BX, 5000
+MUL BX
+CALL PRINTNUM
+
+CEK_ESJERUK:
+; Cek dan Cetak item Es Jeruk jika dibeli
+CMP qty_esjeruk, 0
+JE PRINT_FOOTER
+LEA DX, item_esjeruk
+MOV AH, 09H
+INT 21H
+MOV AX, qty_esjeruk
+CALL PRINTNUM
+LEA DX, titik_dua
+MOV AH, 09H
+INT 21H
+MOV AX, qty_esjeruk
+MOV BX, 6000
+MUL BX
+CALL PRINTNUM
+
+PRINT_FOOTER:
+LEA DX, strip_struk
+MOV AH, 09H
+INT 21H
+
+LEA DX, total_msg
+MOV AH, 09H
+INT 21H
+MOV AX, TOTAL_ALL
+CALL PRINTNUM
+
+LEA DX, bayar_msg
+MOV AH, 09H
+INT 21H
+MOV AX, UANG_BAYAR
+CALL PRINTNUM
+
+LEA DX, kembali_msg
+MOV AH, 09H
+INT 21H
+MOV AX, UANG_KEMBALI
+CALL PRINTNUM
+
+LEA DX, thanks_msg
+MOV AH, 09H
+INT 21H
+
+TANYA_TRANSAKSI_BARU:
+LEA DX, ulang_app
+MOV AH, 09H
+INT 21H
+
+MOV AH, 01H
+INT 21H
+CMP AL, 'Y'
+JE JUMP_BARU
+CMP AL, 'y'
+JE JUMP_BARU
+CMP AL, 'T'
+JE SELESAI_APP
+CMP AL, 't'
+JE SELESAI_APP
+JMP TANYA_TRANSAKSI_BARU
+
+JUMP_BARU:
+JMP TRANSAKSI_BARU
+
+SELESAI_APP:
+MOV AH, 4CH
+INT 21H
+MAIN ENDP
+
+;==========================================================================
+; SUB-PROCEDURE: PRINT NUMERIK (Mencetak Angka di AX ke Layar)
+;==========================================================================
+PRINTNUM PROC
+PUSH AX
+PUSH BX
+PUSH CX
+PUSH DX
+
+MOV CX, 0
+MOV BX, 10
+
+LOOP_DIV:
+MOV DX, 0
+DIV BX
+PUSH DX
+INC CX
+CMP AX, 0
+JNE LOOP_DIV
+
+LOOP_PRINT:
+POP DX
+ADD DL, 30H
+MOV AH, 02H
+INT 21H
+LOOP LOOP_PRINT
+
+POP DX
+POP CX
+POP BX
+POP AX
+RET
+PRINTNUM ENDP
+
+;==========================================================================
+; SUB-PROCEDURE: READ MULTI-DIGIT NUMBER (Membaca Input Angka Bebas)
+;==========================================================================
+READNUM PROC
+PUSH BX
+PUSH CX
+PUSH DX
+
+; Ambil input string via Int 21H Fungsi 0AH
+LEA DX, buffer_input
+MOV AH, 0AH
+INT 21H
+
+; Konversi String ke Integer Angka
+LEA SI, buffer_input + 2 ; Point ke karakter pertama data input
+MOV CH, 0
+MOV CL, [buffer_input + 1] ; Panjang string yang diketik
+
+MOV AX, 0
+MOV BX, 10
+
+CONVERT_LOOP:
+CMP CL, 0
+JE CONVERT_DONE
+
+MOV DX, 0
+MUL BX                  ; AX = AX * 10
+
+MOV DL, [SI]
+SUB DL, 30H             ; Ubah ASCII ke Nilai Integer asli
+ADD AX, DX
+
+INC SI
+DEC CL
+JMP CONVERT_LOOP
+
+CONVERT_DONE:
+POP DX
+POP CX
+POP BX
+RET
+READNUM ENDP
+
+;==========================================================================
+; SUB-PROCEDURE: CLEAR SCREEN (Membersihkan Layar DOSBox)
+;==========================================================================
+CLS PROC
+PUSH AX
+PUSH BX
+PUSH CX
+PUSH DX
+
+MOV AH, 00H
+MOV AL, 03H             ; Mereset mode video teks standar 80x25
+INT 10H
+
+POP DX
+POP CX
+POP BX
+POP AX
+RET
+CLS ENDP
+
+END MAIN
+
+
+
+; [SOURCE]: C:\emu8086\MySource\UAS PBR.asm
